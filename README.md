@@ -1,50 +1,109 @@
-# Welcome to your Expo app 👋
+# 💧 SipUp – Hydration Tracker App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A simple and effective hydration tracking mobile app built using **React Native (Expo)** and **Zustand**.
+SipUp helps users stay consistent with their daily water intake through tracking, goals, and smart habits.
 
-## Get started
+---
 
-1. Install dependencies
+## 📱 Features
 
-   ```bash
-   npm install
-   ```
+* ✅ Track daily water intake
+* 🎯 Set and update daily hydration goal
+* 📊 Visual progress bar (percentage-based)
+* ⚡ Quick add buttons (+250ml, +500ml, custom input)
+* 🔄 Daily reset system (automatic + manual)
+* 📅 Last 7 days history tracking
+* 🔥 Streak system for consistency
+* 💾 Persistent storage using AsyncStorage
 
-2. Start the app
+---
 
-   ```bash
-   npx expo start
-   ```
+## 🛠️ Tech Stack
 
-In the output, you'll find options to open the app in a
+* **React Native (Expo)**
+* **TypeScript**
+* **Zustand (State Management)**
+* **AsyncStorage (Local Storage)**
+* **Expo Router**
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## 📂 Project Structure
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+SipUp/
+├── app/
+│   ├── (tabs)/
+│   │   ├── index.tsx      # Home screen
+│   │   ├── history.tsx    # History screen
+│   ├── _layout.tsx
+├── store/
+│   └── useWaterStore.ts   # Zustand store
+├── components/
+├── hooks/
+├── constants/
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## 🚀 Getting Started
 
-To learn more about developing your project with Expo, look at the following resources:
+### 1. Clone the repository
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+git clone https://github.com/MayankSharma-ops/SipUp.git
+cd SipUp
+```
 
-## Join the community
+### 2. Install dependencies
 
-Join our community of developers creating universal apps.
+```bash
+npm install
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### 3. Start the app
+
+```bash
+npx expo start
+```
+
+* Scan QR using **Expo Go (Android/iOS)**
+* Or run on web/emulator
+
+---
+
+## 📸 Screenshots
+
+
+
+---
+
+## 🎯 Future Improvements
+
+* 🔔 Smart water reminders (notifications)
+* 📈 Weekly & monthly analytics
+* 🧠 AI-based hydration recommendations
+* 🌙 Enhanced dark mode
+* 🏋️‍♂️ Activity-based hydration tracking
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome!
+Feel free to fork the repo and submit a pull request.
+
+---
+
+## 📧 Contact
+
+**Mayank Sharma**
+
+* GitHub: https://github.com/MayankSharma-ops
+* LinkedIn: https://www.linkedin.com/in/mayank---sharma/
+
+---
+
+## ⭐ Support
+
+If you like this project, give it a star ⭐ and share it!
