@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import { Button } from 'react-native-paper';
+import { Button, Snackbar } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWaterStore } from '@/store/useWaterStore';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export default function HomeScreen() {
-  const { intake, goal, addWater, resetWater, updateGoal, checkNewDay } = useWaterStore();
+  const intake = useWaterStore((state) => state.intake);
+  const goal = useWaterStore((state) => state.goal);
+  const addWater = useWaterStore((state) => state.addWater);
+  const resetWater = useWaterStore((state) => state.resetWater);
+  const updateGoal = useWaterStore((state) => state.updateGoal);
+  const checkNewDay = useWaterStore((state) => state.checkNewDay);
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -18,6 +23,14 @@ export default function HomeScreen() {
   const [isCustomModalVisible, setCustomModalVisible] = useState(false);
   const [customAmountText, setCustomAmountText] = useState('');
 
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setToastVisible(true);
+  };
+
   useEffect(() => {
     checkNewDay();
   }, []);
@@ -26,18 +39,32 @@ export default function HomeScreen() {
   const percentage = Math.round(progress * 100);
 
   const handleSaveGoal = () => {
-    const val = parseInt(newGoalText, 10);
-    if (!isNaN(val) && val > 0) {
-      updateGoal(val);
+    if (!newGoalText.trim()) {
+      showToast('Please enter a goal amount');
+      return;
     }
+    const val = parseInt(newGoalText, 10);
+    if (isNaN(val) || val <= 0) {
+      showToast('Please enter a valid goal');
+      return;
+    }
+    updateGoal(val);
+    showToast(`Daily goal updated to ${val} ml!`);
     setGoalModalVisible(false);
   };
 
   const handleSaveCustomAmount = () => {
-    const val = parseInt(customAmountText, 10);
-    if (!isNaN(val) && val > 0) {
-      addWater(val);
+    if (!customAmountText.trim()) {
+      showToast('Please enter an amount');
+      return;
     }
+    const val = parseInt(customAmountText, 10);
+    if (isNaN(val) || val <= 0) {
+      showToast('Please enter a valid amount');
+      return;
+    }
+    addWater(val);
+    showToast(`Added ${val} ml of water!`);
     setCustomModalVisible(false);
     setCustomAmountText('');
   };
@@ -90,8 +117,8 @@ export default function HomeScreen() {
             textColor={textColor}
             style={styles.addButton}
             onPress={() => {
-              console.log("clicked");
               addWater(250);
+              showToast('Added 250 ml of water!');
             }}
           >
             +250 ml
@@ -102,8 +129,8 @@ export default function HomeScreen() {
             textColor={textColor}
             style={styles.addButton}
             onPress={() => {
-              console.log("clicked");
               addWater(500);
+              showToast('Added 500 ml of water!');
             }}
           >
             +500 ml
@@ -185,6 +212,20 @@ export default function HomeScreen() {
           </TouchableWithoutFeedback>
         </Modal>
       )}
+
+      <Snackbar
+        visible={toastVisible}
+        onDismiss={() => setToastVisible(false)}
+        duration={3000}
+        style={{ backgroundColor: primaryColor }}
+        action={{
+          label: 'OK',
+          textColor: '#FFF',
+          onPress: () => setToastVisible(false),
+        }}
+      >
+        <Text style={{ color: '#FFF' }}>{toastMessage}</Text>
+      </Snackbar>
     </View>
   );
 }

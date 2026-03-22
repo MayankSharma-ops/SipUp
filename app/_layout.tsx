@@ -27,15 +27,13 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   
-  const {
-    checkNewDay,
-    intake,
-    goal,
-    lastDrinkTimestamp,
-    lastAppOpenDate,
-    setLastAppOpenDate,
-    addWater
-  } = useWaterStore();
+  const checkNewDay = useWaterStore((state) => state.checkNewDay);
+  const intake = useWaterStore((state) => state.intake);
+  const goal = useWaterStore((state) => state.goal);
+  const lastDrinkTimestamp = useWaterStore((state) => state.lastDrinkTimestamp);
+  const lastAppOpenDate = useWaterStore((state) => state.lastAppOpenDate);
+  const setLastAppOpenDate = useWaterStore((state) => state.setLastAppOpenDate);
+  const addWater = useWaterStore((state) => state.addWater);
 
   useEffect(() => {
     checkNewDay();

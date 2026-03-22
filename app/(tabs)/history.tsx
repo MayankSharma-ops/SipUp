@@ -2,11 +2,15 @@ import React from 'react';
 import { StyleSheet, View, Text, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWaterStore } from '@/store/useWaterStore';
+import { useHistoryStore } from '@/store/useHistoryStore';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { format, parseISO } from 'date-fns';
 
-export default function HistoryScreen() {
-  const { history, streak } = useWaterStore();
+export default function AnalyticsScreen() {
+  const history = useHistoryStore((state) => state.history);
+  const streak = useHistoryStore((state) => state.streak);
+  const todayIntake = useWaterStore((state) => state.intake);
+  const goal = useWaterStore((state) => state.goal);
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -21,18 +25,50 @@ export default function HistoryScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: bgColor }]} contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}>
       
-      <Text style={[styles.title, { color: textColor }]}>History</Text>
+      <Text style={[styles.title, { color: textColor }]}>Analytics</Text>
 
-      {/* Streak Card */}
-      <View style={[styles.streakCard, { backgroundColor: cardBg }]}>
-        <Text style={styles.streakEmoji}>🔥</Text>
-        <Text style={[styles.streakCount, { color: textColor }]}>{streak} Days</Text>
-        <Text style={[styles.streakSubtitle, { color: mutedTextColor }]}>Current Streak</Text>
+      {/* Quick Stats Grid */}
+      <View style={styles.statsGrid}>
+        <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+          <Text style={[styles.statValue, { color: primaryColor }]}>{Math.round(
+            (history.reduce((acc, r) => acc + r.intake, 0) + todayIntake) / (history.length + 1)
+          )} ml</Text>
+          <Text style={[styles.statLabel, { color: mutedTextColor }]}>Avg Intake</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+          <Text style={[styles.statValue, { color: successColor }]}>🔥 {streak}</Text>
+          <Text style={[styles.statLabel, { color: mutedTextColor }]}>Day Streak</Text>
+        </View>
       </View>
 
-      <Text style={[styles.sectionTitle, { color: textColor }]}>Last 7 Days</Text>
+      {/* Weekly Chart */}
+      <Text style={[styles.sectionTitle, { color: textColor }]}>Overview</Text>
+      <View style={[styles.chartCard, { backgroundColor: cardBg }]}>
+        <View style={styles.chartContainer}>
+          {[...history].reverse().concat({ date: 'Today', intake: todayIntake, goal }).slice(-7).map((d, i) => {
+            const maxVal = Math.max(goal, 3000);
+            const heightPct = Math.min((d.intake / maxVal) * 100, 100);
+            let dayLabel = 'T';
+            if (d.date !== 'Today') {
+              try { dayLabel = format(parseISO(d.date), 'EEEE').substring(0,1); } catch(e){}
+            } else {
+              dayLabel = 'Today';
+            }
+            return (
+              <View key={i} style={styles.barWrapper}>
+                <View style={[styles.barBg, { backgroundColor: isDark ? '#374151' : '#E5E7EB' }]}>
+                  <View style={[styles.barFill, { height: `${heightPct}%`, backgroundColor: d.intake >= d.goal ? successColor : primaryColor }]} />
+                </View>
+                <Text style={[styles.barLabel, { color: mutedTextColor }, d.date === 'Today' && { fontWeight: '800', color: textColor }]}>{dayLabel}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
 
-      {history.length === 0 ? (
+      <Text style={[styles.sectionTitle, { color: textColor }]}>Recent Logs</Text>
+
+      {history.length === 0 && todayIntake === 0 ? (
         <View style={styles.emptyState}>
           <Text style={{ color: mutedTextColor, textAlign: 'center', fontSize: 16 }}>No history yet. Start drinking water!</Text>
         </View>
@@ -85,10 +121,34 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 24,
   },
-  streakCard: {
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 32,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 24,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  chartCard: {
     borderRadius: 24,
     padding: 24,
-    alignItems: 'center',
     marginBottom: 32,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -96,17 +156,30 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
   },
-  streakEmoji: {
-    fontSize: 48,
+  chartContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 150,
+  },
+  barWrapper: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  barBg: {
+    width: 12,
+    height: 120,
+    borderRadius: 6,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
     marginBottom: 8,
   },
-  streakCount: {
-    fontSize: 32,
-    fontWeight: '900',
-    marginBottom: 4,
+  barFill: {
+    width: '100%',
+    borderRadius: 6,
   },
-  streakSubtitle: {
-    fontSize: 16,
+  barLabel: {
+    fontSize: 12,
     fontWeight: '600',
   },
   sectionTitle: {
