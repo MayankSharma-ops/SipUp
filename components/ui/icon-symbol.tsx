@@ -23,6 +23,7 @@ const MAPPING = {
   'arrow.clockwise': 'refresh',
   'calendar': 'calendar-today',
   'plus': 'add',
+  'chart.pie.fill': 'pie-chart',
 } as IconMapping;
 
 /**

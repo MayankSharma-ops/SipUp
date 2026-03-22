@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Button, Snackbar } from 'react-native-paper';
+import * as Haptics from 'expo-haptics';
+import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWaterStore } from '@/store/useWaterStore';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -25,10 +27,33 @@ export default function HomeScreen() {
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const showToast = (message: string) => {
     setToastMessage(message);
     setToastVisible(true);
+  };
+
+  const handlePressAdd = (amount: number) => {
+    addWater(amount);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    showToast(`Added ${amount} ml of water!`);
+  };
+
+  const handleLongPressAdd = (amount: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    intervalRef.current = setInterval(() => {
+      addWater(amount);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+    }, 150);
+  };
+
+  const handlePressOutAdd = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -38,17 +63,64 @@ export default function HomeScreen() {
   const progress = Math.min(intake / goal, 1);
   const percentage = Math.round(progress * 100);
 
+  const animatedFillStyle = useAnimatedStyle(() => {
+    return {
+      width: withSpring(`${percentage}%`, {
+        damping: 15,
+        stiffness: 90,
+      }),
+    };
+  });
+
+  const getStatusMessage = () => {
+    if (intake >= goal) {
+      return { msg1: "Goal reached! 🎉", msg2: "Great job hydrating today!" };
+    }
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(9, 0, 0, 0); // 9 AM
+    const end = new Date(now);
+    end.setHours(22, 0, 0, 0); // 10 PM
+
+    if (now.getTime() < start.getTime()) {
+      return { msg1: "Good morning! ☀️", msg2: "Let's get started on your hydration." };
+    }
+
+    const totalMinutes = (end.getTime() - start.getTime()) / 60000;
+    const passedMinutes = Math.min((now.getTime() - start.getTime()) / 60000, totalMinutes);
+    
+    const expectedIntake = (goal / totalMinutes) * passedMinutes;
+    const diff = expectedIntake - intake;
+
+    if (diff > 0) {
+      const roundedDiff = Math.abs(Math.round(diff / 10) * 10);
+      const glasses = Math.ceil(diff / 250);
+      return { 
+        msg1: `You are behind by ${roundedDiff}ml today`, 
+        msg2: `Drink ${glasses} glass${glasses > 1 ? 'es' : ''} to stay on track` 
+      };
+    } else {
+      return { msg1: "You are on track! 💧", msg2: "Keep up the good pacing." };
+    }
+  };
+
+  const { msg1, msg2 } = getStatusMessage();
+
   const handleSaveGoal = () => {
     if (!newGoalText.trim()) {
       showToast('Please enter a goal amount');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
     const val = parseInt(newGoalText, 10);
     if (isNaN(val) || val <= 0) {
       showToast('Please enter a valid goal');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
     updateGoal(val);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     showToast(`Daily goal updated to ${val} ml!`);
     setGoalModalVisible(false);
   };
@@ -56,14 +128,17 @@ export default function HomeScreen() {
   const handleSaveCustomAmount = () => {
     if (!customAmountText.trim()) {
       showToast('Please enter an amount');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
     const val = parseInt(customAmountText, 10);
     if (isNaN(val) || val <= 0) {
       showToast('Please enter a valid amount');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
     addWater(val);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     showToast(`Added ${val} ml of water!`);
     setCustomModalVisible(false);
     setCustomAmountText('');
@@ -82,7 +157,14 @@ export default function HomeScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: textColor }]}>SipUp 💧</Text>
-          <TouchableOpacity onPress={resetWater} style={styles.resetButton} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+          <TouchableOpacity 
+            onPress={() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              resetWater();
+            }} 
+            style={styles.resetButton} 
+            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+          >
             <IconSymbol name="arrow.clockwise" size={24} color={mutedTextColor} />
           </TouchableOpacity>
         </View>
@@ -102,10 +184,16 @@ export default function HomeScreen() {
 
           <View style={styles.progressWrapper}>
             <View style={[styles.progressBarBg, { backgroundColor: isDark ? '#374151' : '#E5E7EB' }]}>
-              <View style={[styles.progressBarFill, { width: `${percentage}%`, backgroundColor: primaryColor }]} />
+              <Animated.View style={[styles.progressBarFill, { backgroundColor: primaryColor }, animatedFillStyle]} />
             </View>
             <Text style={[styles.percentageText, { color: mutedTextColor }]}>{percentage}%</Text>
           </View>
+        </View>
+
+        {/* Insights Card */}
+        <View style={[styles.statusCard, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#EFF6FF' }]}>
+          <Text style={[styles.statusMsg1, { color: primaryColor }]}>{msg1}</Text>
+          <Text style={[styles.statusMsg2, { color: isDark ? '#9CA3AF' : '#4B5563' }]}>{msg2}</Text>
         </View>
 
         {/* Quick Add Buttons */}
@@ -116,10 +204,9 @@ export default function HomeScreen() {
             buttonColor={cardBg}
             textColor={textColor}
             style={styles.addButton}
-            onPress={() => {
-              addWater(250);
-              showToast('Added 250 ml of water!');
-            }}
+            onPress={() => handlePressAdd(250)}
+            onLongPress={() => handleLongPressAdd(250)}
+            onPressOut={handlePressOutAdd}
           >
             +250 ml
           </Button>
@@ -128,10 +215,9 @@ export default function HomeScreen() {
             buttonColor={cardBg}
             textColor={textColor}
             style={styles.addButton}
-            onPress={() => {
-              addWater(500);
-              showToast('Added 500 ml of water!');
-            }}
+            onPress={() => handlePressAdd(500)}
+            onLongPress={() => handleLongPressAdd(500)}
+            onPressOut={handlePressOutAdd}
           >
             +500 ml
           </Button>
@@ -141,7 +227,7 @@ export default function HomeScreen() {
             textColor={textColor}
             style={styles.addButton}
             onPress={() => {
-              console.log("clicked custom");
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setCustomModalVisible(true);
             }}
           >
@@ -250,6 +336,21 @@ const styles = StyleSheet.create({
   },
   resetButton: {
     padding: 8,
+  },
+  statusCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  statusMsg1: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  statusMsg2: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   card: {
     borderRadius: 24,
