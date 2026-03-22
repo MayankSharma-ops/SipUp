@@ -8,7 +8,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform, Alert } from 'react-native';
 import { useWaterStore } from '@/store/useWaterStore';
 import { format } from 'date-fns';
-import { setupNotificationChannel, scheduleSmartNotifications, scheduleOneOffReminder } from '@/utils/notifications';
+import { setupNotificationChannel, scheduleSmartNotifications, scheduleOneOffReminder, scheduleWorkoutReminders } from '@/utils/notifications';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -48,9 +48,13 @@ export default function RootLayout() {
         addWater(500);
       } else if (action === 'REMIND') {
         scheduleOneOffReminder(10);
+      } else if (action === 'DONE_WORKOUT') {
+        // UI for tracking workouts can go here later natively
       }
       // DECLINE does nothing
     });
+
+    scheduleWorkoutReminders();
 
     // Morning check logic
     const todayStr = format(new Date(), 'yyyy-MM-dd');

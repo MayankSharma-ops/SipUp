@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { useWorkoutStore } from '@/store/useWorkoutStore';
 
 export async function setupNotificationChannel() {
   if (Platform.OS === 'android') {
@@ -41,6 +42,19 @@ export async function setupNotificationChannel() {
       options: { isDestructive: true, opensAppToForeground: false },
     },
   ]);
+
+  await Notifications.setNotificationCategoryAsync('workout', [
+    {
+      identifier: 'DONE_WORKOUT',
+      buttonTitle: 'Started! 💪',
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: 'DECLINE',
+      buttonTitle: 'Skip ❌',
+      options: { isDestructive: true, opensAppToForeground: false },
+    },
+  ]);
 }
 
 export async function scheduleOneOffReminder(minutes: number) {
@@ -70,7 +84,12 @@ export async function scheduleSmartNotifications(intake: number, goal: number, l
     return;
   }
 
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of allNotifications) {
+    if (n.content.categoryIdentifier === 'water' || n.content.categoryIdentifier === 'morning') {
+      await Notifications.cancelScheduledNotificationAsync(n.identifier);
+    }
+  }
 
   const remainingWater = goal - intake;
   if (remainingWater <= 0) return;
@@ -147,5 +166,55 @@ export async function scheduleSmartNotifications(intake: number, goal: number, l
         },
       });
     }
+  }
+}
+
+export async function scheduleWorkoutReminders() {
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== 'granted') return;
+
+  const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of allNotifications) {
+    if (n.content.categoryIdentifier === 'workout') {
+      await Notifications.cancelScheduledNotificationAsync(n.identifier);
+    }
+  }
+
+  const schedule = useWorkoutStore.getState().schedule;
+  const days = Object.keys(schedule) as any as (1|2|3|4|5|6|7)[];
+
+  for (const day of days) {
+    const daySetting = schedule[day];
+    if (daySetting.isRest) continue;
+
+    // Calculate 15 mins prior strictly natively
+    const d = new Date();
+    d.setHours(daySetting.hour, daySetting.minute, 0, 0);
+    d.setMinutes(d.getMinutes() - 15);
+    
+    // Evaluate if subtraction warped target over a day boundary natively
+    const originalTime = new Date();
+    originalTime.setHours(daySetting.hour, daySetting.minute, 0, 0);
+    
+    let targetWeekday = day;
+    if (d.getDate() < originalTime.getDate()) {
+       targetWeekday = (day - 1) < 1 ? 7 : (day - 1) as any;
+    } else if (d.getDate() > originalTime.getDate()) {
+       targetWeekday = (day + 1) > 7 ? 1 : (day + 1) as any;
+    }
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Workout Time Approaching! 🏋️‍♂️",
+        body: "Your scheduled workout starts in precisely 15 minutes. Get ready!",
+        categoryIdentifier: 'workout',
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+        weekday: targetWeekday,
+        hour: d.getHours(),
+        minute: d.getMinutes(),
+      },
+    });
   }
 }

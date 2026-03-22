@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, Switch } from 'react-native';
 import { Button, Snackbar } from 'react-native-paper';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWaterStore } from '@/store/useWaterStore';
+import { useWorkoutStore, WorkoutSchedule } from '@/store/useWorkoutStore';
+import { scheduleWorkoutReminders } from '@/utils/notifications';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
@@ -25,6 +27,12 @@ export default function HomeScreen() {
 
   const [isCustomModalVisible, setCustomModalVisible] = useState(false);
   const [customAmountText, setCustomAmountText] = useState('');
+
+  const [habitMenuVisible, setHabitMenuVisible] = useState(false);
+  const [workoutModalVisible, setWorkoutModalVisible] = useState(false);
+  const workoutSchedule = useWorkoutStore((state) => state.schedule);
+  const updateWorkoutSchedule = useWorkoutStore((state) => state.updateSchedule);
+  const [tempWorkoutSchedule, setTempWorkoutSchedule] = useState<WorkoutSchedule>(workoutSchedule);
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -110,6 +118,14 @@ export default function HomeScreen() {
 
   const { msg1, msg2 } = getStatusMessage();
 
+  const handleSaveWorkout = () => {
+    updateWorkoutSchedule(tempWorkoutSchedule);
+    scheduleWorkoutReminders();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showToast("Workout schedule natively saved! Weekly reminders active.");
+    setWorkoutModalVisible(false);
+  };
+
   const handleSaveGoal = () => {
     if (!newGoalText.trim()) {
       showToast('Please enter a goal amount');
@@ -159,7 +175,10 @@ export default function HomeScreen() {
         
         {/* Header */}
         <View style={styles.header}>
-          <Text style={[styles.title, { color: textColor }]}>SipUp 💧</Text>
+          <TouchableOpacity onPress={() => setHabitMenuVisible(true)} style={{flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 8}}>
+            <Text style={[styles.title, { color: textColor, marginBottom: 0 }]}>SipUp 💧</Text>
+            <IconSymbol name="chevron.right" size={24} color={primaryColor} style={{transform: [{rotate: '90deg'}], marginLeft: 4}} />
+          </TouchableOpacity>
           <TouchableOpacity 
             onPress={() => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -271,6 +290,90 @@ export default function HomeScreen() {
         </Modal>
       )}
 
+      {/* Habit Dropdown Modal */}
+      <Modal visible={habitMenuVisible} transparent animationType="fade" onRequestClose={() => setHabitMenuVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setHabitMenuVisible(false)}>
+          <View style={[styles.menuContainer, { backgroundColor: cardBg }]}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => setHabitMenuVisible(false)}>
+              <Text style={[styles.menuText, { color: primaryColor, fontWeight: '700' }]}>💧 SipUp (Water)</Text>
+            </TouchableOpacity>
+            <View style={[styles.menuDivider, { backgroundColor: isDark ? '#374151' : '#E5E7EB' }]} />
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setHabitMenuVisible(false); setTempWorkoutSchedule(workoutSchedule); setWorkoutModalVisible(true); }}>
+              <Text style={[styles.menuText, { color: textColor }]}>🏋️ Workout Engine</Text>
+            </TouchableOpacity>
+            <View style={[styles.menuDivider, { backgroundColor: isDark ? '#374151' : '#E5E7EB' }]} />
+            <TouchableOpacity style={styles.menuItem} onPress={() => { showToast('Sleep tracking coming soon!'); setHabitMenuVisible(false); }}>
+              <Text style={[styles.menuText, { color: textColor }]}>😴 Sleep</Text>
+            </TouchableOpacity>
+            <View style={[styles.menuDivider, { backgroundColor: isDark ? '#374151' : '#E5E7EB' }]} />
+            <TouchableOpacity style={styles.menuItem} onPress={() => { showToast('Meditation coming soon!'); setHabitMenuVisible(false); }}>
+              <Text style={[styles.menuText, { color: textColor }]}>🧘 Meditation</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Workout Schedule Modal */}
+      <Modal visible={workoutModalVisible} animationType="slide" onRequestClose={() => setWorkoutModalVisible(false)}>
+        <View style={[{flex: 1, paddingTop: insets.top, backgroundColor: bgColor}]}>
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center'}}>
+            <Text style={{fontSize: 24, fontWeight: '800', color: textColor}}>Weekly Workout 🔥</Text>
+            <TouchableOpacity onPress={() => setWorkoutModalVisible(false)}><Text style={{color: mutedTextColor, fontWeight: '600'}}>Close</Text></TouchableOpacity>
+          </View>
+          
+          <ScrollView contentContainerStyle={{padding: 20}}>
+            <Text style={{color: mutedTextColor, marginBottom: 24}}>Set your lifelong workout timetable here. We will natively push notifications exactly 15 minutes before your scheduled start time.</Text>
+
+            {([
+              { id: 2, label: 'Mon' }, { id: 3, label: 'Tue' }, { id: 4, label: 'Wed' },
+              { id: 5, label: 'Thu' }, { id: 6, label: 'Fri' }, { id: 7, label: 'Sat' }, { id: 1, label: 'Sun' }
+            ] as const).map(day => {
+              const current = tempWorkoutSchedule?.[day.id as keyof WorkoutSchedule] || { hour: 17, minute: 0, isRest: false };
+              return (
+                <View key={day.id} style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, backgroundColor: cardBg, padding: 16, borderRadius: 16}}>
+                  <Text style={{color: textColor, width: 50, fontWeight: '700', fontSize: 16}}>{day.label}</Text>
+                  
+                  {!current.isRest ? (
+                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                      <TextInput 
+                        style={[styles.timeInput, {backgroundColor: isDark ? '#374151' : '#F3F4F6', color: textColor}]} 
+                        value={current.hour.toString().padStart(2, '0')} 
+                        keyboardType="number-pad" maxLength={2} 
+                        onChangeText={(t) => setTempWorkoutSchedule(prev => ({...prev, [day.id]: {...current, hour: parseInt(t||'0')%24}}))}
+                      />
+                      <Text style={{color: mutedTextColor, marginHorizontal: 8, fontSize: 20, fontWeight: '800'}}>:</Text>
+                      <TextInput 
+                        style={[styles.timeInput, {backgroundColor: isDark ? '#374151' : '#F3F4F6', color: textColor}]} 
+                        value={current.minute.toString().padStart(2, '0')} 
+                        keyboardType="number-pad" maxLength={2} 
+                        onChangeText={(t) => setTempWorkoutSchedule(prev => ({...prev, [day.id]: {...current, minute: parseInt(t||'0')%60}}))}
+                      />
+                    </View>
+                  ) : (
+                    <Text style={{color: mutedTextColor, fontStyle: 'italic', flex: 1, textAlign: 'center'}}>Rest Day 🛋️</Text>
+                  )}
+
+                  <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                    <Text style={{color: current.isRest ? primaryColor : mutedTextColor, fontSize: 12, fontWeight: '700'}}>Rest</Text>
+                    <Switch 
+                      value={current.isRest} 
+                      onValueChange={v => setTempWorkoutSchedule(prev => ({...prev, [day.id]: {...current, isRest: v}}))} 
+                      trackColor={{ false: isDark ? '#374151' : '#D1D5DB', true: primaryColor }}
+                    />
+                  </View>
+                </View>
+              )
+            })}
+          </ScrollView>
+
+          <View style={{padding: 20, paddingBottom: insets.bottom + 20, backgroundColor: cardBg, borderTopWidth: 1, borderTopColor: isDark ? '#374151' : '#E5E7EB'}}>
+            <Button mode="contained" buttonColor={primaryColor} textColor="#FFF" style={{borderRadius: 12, paddingVertical: 6}} onPress={handleSaveWorkout}>
+              Save Lifecycle Schedule
+            </Button>
+          </View>
+        </View>
+      </Modal>
+
       {/* Goal Modal */}
       {isGoalModalVisible && (
         <Modal visible={true} transparent animationType="fade">
@@ -354,6 +457,38 @@ const styles = StyleSheet.create({
   statusMsg2: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  menuContainer: {
+    width: 250,
+    borderRadius: 16,
+    padding: 8,
+    alignSelf: 'center',
+    marginTop: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  menuItem: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  menuText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  menuDivider: {
+    height: 1,
+    width: '100%',
+  },
+  timeInput: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '700',
   },
   card: {
     borderRadius: 24,
