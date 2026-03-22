@@ -14,6 +14,8 @@ interface WaterState {
   intake: number;
   goal: number;
   lastUpdatedDate: string; // Format: 'yyyy-MM-dd'
+  lastAppOpenDate: string | null;
+  lastDrinkTimestamp: number | null;
   history: DailyRecord[];
   streak: number;
   
@@ -22,6 +24,7 @@ interface WaterState {
   resetWater: () => void;
   updateGoal: (newGoal: number) => void;
   checkNewDay: () => void;
+  setLastAppOpenDate: (date: string) => void;
 }
 
 export const useWaterStore = create<WaterState>()(
@@ -30,6 +33,8 @@ export const useWaterStore = create<WaterState>()(
       intake: 0,
       goal: 3000,
       lastUpdatedDate: format(new Date(), 'yyyy-MM-dd'),
+      lastAppOpenDate: null,
+      lastDrinkTimestamp: null,
       history: [],
       streak: 0,
 
@@ -37,7 +42,12 @@ export const useWaterStore = create<WaterState>()(
         set((state) => ({
           intake: state.intake + amount,
           lastUpdatedDate: format(new Date(), 'yyyy-MM-dd'),
+          lastDrinkTimestamp: Date.now(),
         }));
+      },
+
+      setLastAppOpenDate: (date: string) => {
+        set({ lastAppOpenDate: date });
       },
 
       resetWater: () => {
