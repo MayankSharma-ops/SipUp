@@ -3,10 +3,16 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
+export interface DrinkLog {
+  timestamp: number;
+  amount: number;
+}
+
 export interface DailyRecord {
   date: string; // Format: 'yyyy-MM-dd'
   intake: number;
   goal: number;
+  drinkLogs?: DrinkLog[];
 }
 
 interface HistoryState {
@@ -34,7 +40,7 @@ export const useHistoryStore = create<HistoryState>()(
             newStreak = 0;
           }
           
-          const newHistory = [record, ...state.history].slice(0, 7);
+          const newHistory = [record, ...state.history].slice(0, 31);
           
           return {
             streak: newStreak,
