@@ -10,6 +10,38 @@ export async function setupNotificationChannel() {
       lightColor: '#60A5FA',
     });
   }
+
+  await Notifications.setNotificationCategoryAsync('water', [
+    {
+      identifier: 'ACCEPT',
+      buttonTitle: 'Accept (250ml) ✅',
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: 'REMIND',
+      buttonTitle: 'Remind me in 10m ⏱️',
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: 'DECLINE',
+      buttonTitle: 'Decline ❌',
+      options: { isDestructive: true, opensAppToForeground: false },
+    },
+  ]);
+}
+
+export async function scheduleOneOffReminder(minutes: number) {
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Hydration Reminder! 💧",
+      body: `You asked to be reminded ${minutes} minutes ago. Drink 250ml of water now!`,
+      categoryIdentifier: 'water',
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: minutes * 60,
+    },
+  });
 }
 
 export async function scheduleSmartNotifications(intake: number, goal: number, lastDrinkTimestamp: number | null) {
@@ -59,6 +91,7 @@ export async function scheduleSmartNotifications(intake: number, goal: number, l
       content: {
         title: "Time to hydrate! 💧",
         body: "Drink 250ml of water to keep your streak going.",
+        categoryIdentifier: 'water',
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,

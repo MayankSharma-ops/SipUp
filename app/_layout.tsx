@@ -8,7 +8,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform, Alert } from 'react-native';
 import { useWaterStore } from '@/store/useWaterStore';
 import { format } from 'date-fns';
-import { setupNotificationChannel, scheduleSmartNotifications } from '@/utils/notifications';
+import { setupNotificationChannel, scheduleSmartNotifications, scheduleOneOffReminder } from '@/utils/notifications';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -39,6 +39,17 @@ export default function RootLayout() {
     checkNewDay();
     setupNotificationChannel();
     
+    // Notification Response Listener
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      const action = response.actionIdentifier;
+      if (action === 'ACCEPT') {
+        addWater(250);
+      } else if (action === 'REMIND') {
+        scheduleOneOffReminder(10);
+      }
+      // DECLINE does nothing
+    });
+
     // Morning check logic
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     if (lastAppOpenDate !== todayStr) {
@@ -59,6 +70,10 @@ export default function RootLayout() {
         );
       }, 500);
     }
+
+    return () => {
+      responseListener.remove();
+    };
   }, []);
 
   useEffect(() => {
