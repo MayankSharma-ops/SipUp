@@ -11,6 +11,19 @@ export async function setupNotificationChannel() {
     });
   }
 
+  await Notifications.setNotificationCategoryAsync('morning', [
+    {
+      identifier: 'ACCEPT_MORNING',
+      buttonTitle: 'Accept (500ml) ☀️',
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: 'DECLINE',
+      buttonTitle: 'Dismiss ❌',
+      options: { isDestructive: true, opensAppToForeground: false },
+    },
+  ]);
+
   await Notifications.setNotificationCategoryAsync('water', [
     {
       identifier: 'ACCEPT',
@@ -98,5 +111,41 @@ export async function scheduleSmartNotifications(intake: number, goal: number, l
         date: triggerTime,
       },
     });
+  }
+
+  // --- SAFETY NET MATRIX FOR NEXT 3 DAYS ---
+  // If the user doesn't open the app tomorrow or the day after, these ensure they are still pinged.
+  // Whenever the app is opened, this entire function re-runs and pushes the 3-day net forward automatically.
+  for (let dayOffset = 1; dayOffset <= 3; dayOffset++) {
+    const fallbackTimes = [9, 14, 19]; // 9 AM, 2 PM, 7 PM
+
+    for (const hour of fallbackTimes) {
+      const fallbackDate = new Date();
+      fallbackDate.setDate(fallbackDate.getDate() + dayOffset);
+      fallbackDate.setHours(hour, 0, 0, 0);
+
+      let title = "Hydration Safety Net 💧";
+      let body = "Don't break your streak! Drink a glass of water.";
+
+      if (hour === 9) {
+        title = "Good Morning! ☀️";
+        body = "Let's start your new day perfectly hydrated. Drink 500ml!";
+      } else if (hour === 14) {
+        title = "Afternoon Check-in 🥤";
+        body = "Keep the momentum going! How is your water intake today?";
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          categoryIdentifier: 'water',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: fallbackDate,
+        },
+      });
+    }
   }
 }

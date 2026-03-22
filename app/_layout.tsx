@@ -44,6 +44,8 @@ export default function RootLayout() {
       const action = response.actionIdentifier;
       if (action === 'ACCEPT') {
         addWater(250);
+      } else if (action === 'ACCEPT_MORNING') {
+        addWater(500);
       } else if (action === 'REMIND') {
         scheduleOneOffReminder(10);
       }
@@ -53,21 +55,16 @@ export default function RootLayout() {
     // Morning check logic
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     if (lastAppOpenDate !== todayStr) {
+      setLastAppOpenDate(todayStr); // Sets wakeUpTime implicitly
       setTimeout(() => {
-        Alert.alert(
-          "Good Morning! ☀️",
-          "Let's start the day hydrated. Would you like to log your first 500ml?",
-          [
-            { text: "Skip", onPress: () => setLastAppOpenDate(todayStr), style: "cancel" },
-            { 
-              text: "Yes, 500ml", 
-              onPress: () => { 
-                 setLastAppOpenDate(todayStr); 
-                 addWater(500); 
-              } 
-            }
-          ]
-        );
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: "Good Morning! ☀️",
+            body: "Let's start the day hydrated. Would you like to log your first 500ml?",
+            categoryIdentifier: 'morning',
+          },
+          trigger: null,
+        });
       }, 500);
     }
 

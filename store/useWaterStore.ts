@@ -12,6 +12,7 @@ interface WaterState {
   lastUpdatedDate: string; // Format: 'yyyy-MM-dd'
   lastAppOpenDate: string | null;
   lastDrinkTimestamp: number | null;
+  wakeUpTime: number | null;
   
   // Actions
   addWater: (amount: number) => void;
@@ -29,6 +30,7 @@ export const useWaterStore = create<WaterState>()(
       lastUpdatedDate: format(new Date(), 'yyyy-MM-dd'),
       lastAppOpenDate: null,
       lastDrinkTimestamp: null,
+      wakeUpTime: null,
 
       addWater: (amount) => {
         if (amount <= 0) return;
@@ -40,7 +42,13 @@ export const useWaterStore = create<WaterState>()(
       },
 
       setLastAppOpenDate: (date: string) => {
-        set({ lastAppOpenDate: date });
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const state = get();
+        if (state.lastAppOpenDate !== todayStr) {
+          set({ lastAppOpenDate: date, wakeUpTime: Date.now() });
+        } else {
+          set({ lastAppOpenDate: date });
+        }
       },
 
       resetWater: () => {
@@ -78,6 +86,7 @@ export const useWaterStore = create<WaterState>()(
           set({
             intake: 0, // Reset for the new day
             lastUpdatedDate: todayStr,
+            wakeUpTime: null,
           });
         }
       },

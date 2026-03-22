@@ -11,6 +11,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 export default function HomeScreen() {
   const intake = useWaterStore((state) => state.intake);
   const goal = useWaterStore((state) => state.goal);
+  const wakeUpTime = useWaterStore((state) => state.wakeUpTime);
   const addWater = useWaterStore((state) => state.addWater);
   const resetWater = useWaterStore((state) => state.resetWater);
   const updateGoal = useWaterStore((state) => state.updateGoal);
@@ -78,8 +79,10 @@ export default function HomeScreen() {
     }
 
     const now = new Date();
-    const start = new Date(now);
-    start.setHours(9, 0, 0, 0); // 9 AM
+    // Dynamically calculate from exact wake up moment
+    const start = wakeUpTime ? new Date(wakeUpTime) : new Date(now);
+    if (!wakeUpTime) start.setHours(9, 0, 0, 0); 
+    
     const end = new Date(now);
     end.setHours(22, 0, 0, 0); // 10 PM
 
