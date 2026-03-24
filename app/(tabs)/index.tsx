@@ -71,6 +71,9 @@ export default function HomeScreen() {
 
   const progress = Math.min(intake / goal, 1);
   const percentage = Math.round(progress * 100);
+  
+  const lifetimeXp = useWaterStore((state) => state.lifetimeXp) || 0;
+  const companionState = useWaterStore((state) => state.companionState) || 'neutral';
 
   const animatedFillStyle = useAnimatedStyle(() => {
     return {
@@ -81,9 +84,24 @@ export default function HomeScreen() {
     };
   });
 
+  const getCompanionVisual = () => {
+    // 0: Seed, 1: Sprout, 2: Plant, 3: Bonsai, 4+", Blossom
+    if (companionState === 'withered') return '🥀';
+    if (companionState === 'sad') return '🍂';
+
+    if (lifetimeXp < 2000) return '🌱';       // Sprout
+    if (lifetimeXp < 6000) return '🌿';       // Plant
+    if (lifetimeXp < 15000) return '🌳';      // Bonsai
+    return '🌸';                              // Blossom
+  };
+
   const getStatusMessage = () => {
+    if (companionState === 'withered' && intake === 0) {
+      return { msg1: "Sprout: I'm so thirsty... 🥀", msg2: "You missed your goal yesterday. Please don't let me wither." };
+    }
+
     if (intake >= goal) {
-      return { msg1: "Goal reached! 🎉", msg2: "Great job hydrating today!" };
+      return { msg1: "Sprout: I'm fully bloated! 🌸", msg2: "You kept me alive today. Thank you!" };
     }
 
     const now = new Date();
@@ -95,7 +113,7 @@ export default function HomeScreen() {
     end.setHours(22, 0, 0, 0); // 10 PM
 
     if (now.getTime() < start.getTime()) {
-      return { msg1: "Good morning! ☀️", msg2: "Let's get started on your hydration." };
+      return { msg1: "Sprout: Good morning! ☀️", msg2: "Let's grow together this morning!" };
     }
 
     const totalMinutes = (end.getTime() - start.getTime()) / 60000;
@@ -108,11 +126,11 @@ export default function HomeScreen() {
       const roundedDiff = Math.abs(Math.round(diff / 10) * 10);
       const glasses = Math.ceil(diff / 250);
       return { 
-        msg1: `You are behind by ${roundedDiff}ml today`, 
-        msg2: `Drink ${glasses} glass${glasses > 1 ? 'es' : ''} to stay on track` 
+        msg1: `Sprout: I need ${roundedDiff}ml to grow 🪴`, 
+        msg2: `Drink ${glasses} glass${glasses > 1 ? 'es' : ''} so I don't wither!` 
       };
     } else {
-      return { msg1: "You are on track! 💧", msg2: "Keep up the good pacing." };
+      return { msg1: "Sprout: The water tastes great! 🌿", msg2: "We are perfectly on track right now." };
     }
   };
 
@@ -191,11 +209,19 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Progress Card */}
-        <View style={[styles.card, { backgroundColor: cardBg }]}>
-          <Text style={[styles.cardTitle, { color: mutedTextColor }]}>Today's Intake</Text>
+        {/* Companion Card */}
+        <View style={[styles.card, { backgroundColor: cardBg, alignItems: 'center' }]}>
           
-          <View style={styles.intakeContainer}>
+          {/* Enhanced Companion Display */}
+          <View style={{ marginBottom: 16, alignItems: 'center', height: 120, justifyContent: 'flex-end' }}>
+             <Animated.Text style={[{ fontSize: 80, color: textColor }]}>
+                {getCompanionVisual()}
+             </Animated.Text>
+             {/* Small Shadow for Companion mapped slightly to size progress */}
+             <View style={{ width: 60, height: 10, backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: 30, transform: [{scaleX: progress + 0.5}], alignSelf: 'center', marginTop: 10 }} />
+          </View>
+
+          <View style={[styles.intakeContainer, { justifyContent: 'center' }]}>
             <Text style={[styles.intakeText, { color: textColor }]}>{intake}</Text>
             <Text style={[styles.goalText, { color: mutedTextColor }]}> / {goal} ml</Text>
           </View>
@@ -209,6 +235,10 @@ export default function HomeScreen() {
               <Animated.View style={[styles.progressBarFill, { backgroundColor: primaryColor }, animatedFillStyle]} />
             </View>
             <Text style={[styles.percentageText, { color: mutedTextColor }]}>{percentage}%</Text>
+          </View>
+
+          <View style={{ position: 'absolute', top: 16, left: 16, backgroundColor: isDark ? '#374151' : '#F3F4F6', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 }}>
+            <Text style={{ color: primaryColor, fontWeight: '800', fontSize: 12 }}>XP: {lifetimeXp}</Text>
           </View>
         </View>
 

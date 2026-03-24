@@ -14,6 +14,8 @@ interface WaterState {
   lastDrinkTimestamp: number | null;
   wakeUpTime: number | null;
   drinkLogs: { timestamp: number; amount: number }[];
+  lifetimeXp: number;
+  companionState: 'happy' | 'neutral' | 'sad' | 'withered';
   
   // Actions
   addWater: (amount: number) => void;
@@ -33,15 +35,24 @@ export const useWaterStore = create<WaterState>()(
       lastDrinkTimestamp: null,
       wakeUpTime: null,
       drinkLogs: [],
+      lifetimeXp: 0,
+      companionState: 'neutral',
 
       addWater: (amount) => {
         if (amount <= 0) return;
-        set((state) => ({
-          intake: Math.min(state.intake + amount, state.goal),
-          lastUpdatedDate: format(new Date(), 'yyyy-MM-dd'),
-          lastDrinkTimestamp: Date.now(),
-          drinkLogs: [...(state.drinkLogs || []), { timestamp: Date.now(), amount }],
-        }));
+        set((state) => {
+          const newIntake = Math.min(state.intake + amount, state.goal);
+          const isGoalMet = newIntake >= state.goal;
+          
+          return {
+            intake: newIntake,
+            lastUpdatedDate: format(new Date(), 'yyyy-MM-dd'),
+            lastDrinkTimestamp: Date.now(),
+            drinkLogs: [...(state.drinkLogs || []), { timestamp: Date.now(), amount }],
+            lifetimeXp: (state.lifetimeXp || 0) + amount,
+            companionState: isGoalMet ? 'happy' : 'neutral',
+          };
+        });
       },
 
       setLastAppOpenDate: (date: string) => {
@@ -75,8 +86,15 @@ export const useWaterStore = create<WaterState>()(
           const today = new Date();
           const daysDiff = differenceInDays(today, lastDate);
 
-          // Save to history store
+          // Determine Guilt / Decay State based on yesterday
+          let nextCompanionState: 'happy'|'neutral'|'sad'|'withered' = 'neutral';
           if (daysDiff > 0) {
+            if (state.intake < state.goal) {
+               nextCompanionState = 'withered'; // Penalty
+            } else {
+               nextCompanionState = 'happy'; // Kept alive!
+            }
+
             useHistoryStore.getState().saveDailyRecord(
               {
                 date: state.lastUpdatedDate,
@@ -93,6 +111,7 @@ export const useWaterStore = create<WaterState>()(
             lastUpdatedDate: todayStr,
             wakeUpTime: null,
             drinkLogs: [],
+            companionState: nextCompanionState,
           });
         }
       },
