@@ -1,11 +1,9 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
-import { Platform, Alert } from 'react-native';
 import { useWaterStore } from '@/store/useWaterStore';
 import { format } from 'date-fns';
 import { setupNotificationChannel, scheduleSmartNotifications, scheduleOneOffReminder, scheduleWorkoutReminders } from '@/utils/notifications';
@@ -25,8 +23,6 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  
   const checkNewDay = useWaterStore((state) => state.checkNewDay);
   const intake = useWaterStore((state) => state.intake);
   const goal = useWaterStore((state) => state.goal);
@@ -75,6 +71,8 @@ export default function RootLayout() {
     return () => {
       responseListener.remove();
     };
+  // This bootstraps notification wiring once when the app shell mounts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -82,12 +80,12 @@ export default function RootLayout() {
   }, [intake, goal, lastDrinkTimestamp]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style="dark" />
     </ThemeProvider>
   );
 }
