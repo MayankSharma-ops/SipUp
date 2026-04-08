@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { defaultHistorySnapshot, type HistorySnapshot } from './useHistoryStore';
+import { createAppStorage } from './storage';
 import { createDefaultWaterSnapshot, type WaterSnapshot } from './useWaterStore';
 import { defaultWorkoutSnapshot, type WorkoutSnapshot } from './useWorkoutStore';
-import { createAppStorage } from './storage';
 import { normalizeEmail } from '@/utils/email';
 
 export interface ProfileSnapshots {
@@ -16,16 +16,34 @@ export interface ProfileSnapshots {
 export interface UserProfile extends ProfileSnapshots {
   createdAt: number;
   email: string;
+  id: string | null;
+  lastLoginAt: number | null;
   updatedAt: number;
 }
 
+type RemoteUserPayload = {
+  createdAt: string;
+  email: string;
+  id: string;
+  lastLoginAt: string | null;
+};
+
+type RemoteProfilePayload = {
+  profile: ProfileSnapshots;
+  profileUpdatedAt: string | null;
+  user: RemoteUserPayload;
+};
+
 interface ProfileState {
+  currentSessionToken: string | null;
   currentUserEmail: string | null;
+  currentUserId: string | null;
   hydrated: boolean;
   profiles: Record<string, UserProfile>;
-  loginWithEmail: (email: string, seedData?: ProfileSnapshots) => string | null;
   logout: () => void;
+  mergeRemoteProfile: (payload: RemoteProfilePayload) => void;
   saveCurrentUserData: (snapshots: ProfileSnapshots) => void;
+  setAuthenticatedSession: (payload: RemoteProfilePayload & { sessionToken: string }) => void;
   setHydrated: (value: boolean) => void;
 }
 
@@ -50,73 +68,94 @@ function cloneSnapshots(seedData?: ProfileSnapshots): ProfileSnapshots {
       : {
           ...createDefaultWaterSnapshot(),
         },
-    workout: seedData
-      ? {
-          schedule: {
-            1: { ...workoutSchedule[1] },
-            2: { ...workoutSchedule[2] },
-            3: { ...workoutSchedule[3] },
-            4: { ...workoutSchedule[4] },
-            5: { ...workoutSchedule[5] },
-            6: { ...workoutSchedule[6] },
-            7: { ...workoutSchedule[7] },
-          },
-        }
-      : {
-          schedule: {
-            1: { ...workoutSchedule[1] },
-            2: { ...workoutSchedule[2] },
-            3: { ...workoutSchedule[3] },
-            4: { ...workoutSchedule[4] },
-            5: { ...workoutSchedule[5] },
-            6: { ...workoutSchedule[6] },
-            7: { ...workoutSchedule[7] },
-          },
-        },
+    workout: {
+      schedule: {
+        1: { ...workoutSchedule[1] },
+        2: { ...workoutSchedule[2] },
+        3: { ...workoutSchedule[3] },
+        4: { ...workoutSchedule[4] },
+        5: { ...workoutSchedule[5] },
+        6: { ...workoutSchedule[6] },
+        7: { ...workoutSchedule[7] },
+      },
+    },
   };
 }
 
-function createProfile(email: string, seedData?: ProfileSnapshots): UserProfile {
+function parseTimestamp(value: string | null | undefined, fallback: number) {
+  if (!value) {
+    return fallback;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : fallback;
+}
+
+function createProfile(
+  email: string,
+  seedData?: ProfileSnapshots,
+  metadata?: Partial<Pick<UserProfile, 'createdAt' | 'id' | 'lastLoginAt' | 'updatedAt'>>
+): UserProfile {
   const now = Date.now();
 
   return {
     ...cloneSnapshots(seedData),
-    createdAt: now,
+    createdAt: metadata?.createdAt ?? now,
     email,
-    updatedAt: now,
+    id: metadata?.id ?? null,
+    lastLoginAt: metadata?.lastLoginAt ?? null,
+    updatedAt: metadata?.updatedAt ?? now,
   };
+}
+
+function buildProfileFromRemote(
+  existingProfile: UserProfile | undefined,
+  payload: RemoteProfilePayload
+): UserProfile {
+  const normalizedEmail = normalizeEmail(payload.user.email);
+  const createdAt = parseTimestamp(payload.user.createdAt, existingProfile?.createdAt ?? Date.now());
+  const lastLoginAt = payload.user.lastLoginAt
+    ? parseTimestamp(payload.user.lastLoginAt, Date.now())
+    : null;
+  const updatedAt = parseTimestamp(payload.profileUpdatedAt, Date.now());
+
+  return createProfile(normalizedEmail, payload.profile ?? existingProfile, {
+    createdAt,
+    id: payload.user.id,
+    lastLoginAt,
+    updatedAt,
+  });
 }
 
 export const useProfileStore = create<ProfileState>()(
   persist(
     (set) => ({
+      currentSessionToken: null,
       currentUserEmail: null,
+      currentUserId: null,
       hydrated: false,
       profiles: {},
-      loginWithEmail: (email, seedData) => {
-        const normalizedEmail = normalizeEmail(email);
-
-        if (!normalizedEmail) {
-          return null;
-        }
+      logout: () =>
+        set({
+          currentSessionToken: null,
+          currentUserEmail: null,
+          currentUserId: null,
+        }),
+      mergeRemoteProfile: (payload) => {
+        const normalizedEmail = normalizeEmail(payload.user.email);
 
         set((state) => {
           const existingProfile = state.profiles[normalizedEmail];
+          const nextProfile = buildProfileFromRemote(existingProfile, payload);
 
           return {
-            currentUserEmail: normalizedEmail,
-            profiles: existingProfile
-              ? state.profiles
-              : {
-                  ...state.profiles,
-                  [normalizedEmail]: createProfile(normalizedEmail, seedData),
-                },
+            profiles: {
+              ...state.profiles,
+              [normalizedEmail]: nextProfile,
+            },
           };
         });
-
-        return normalizedEmail;
       },
-      logout: () => set({ currentUserEmail: null }),
       saveCurrentUserData: (snapshots) => {
         set((state) => {
           if (!state.currentUserEmail) {
@@ -131,11 +170,30 @@ export const useProfileStore = create<ProfileState>()(
           return {
             profiles: {
               ...state.profiles,
-              [state.currentUserEmail]: {
-                ...currentProfile,
-                ...cloneSnapshots(snapshots),
+              [state.currentUserEmail]: createProfile(state.currentUserEmail, snapshots, {
+                createdAt: currentProfile.createdAt,
+                id: currentProfile.id,
+                lastLoginAt: currentProfile.lastLoginAt,
                 updatedAt: Date.now(),
-              },
+              }),
+            },
+          };
+        });
+      },
+      setAuthenticatedSession: (payload) => {
+        const normalizedEmail = normalizeEmail(payload.user.email);
+
+        set((state) => {
+          const existingProfile = state.profiles[normalizedEmail];
+          const nextProfile = buildProfileFromRemote(existingProfile, payload);
+
+          return {
+            currentSessionToken: payload.sessionToken,
+            currentUserEmail: normalizedEmail,
+            currentUserId: payload.user.id,
+            profiles: {
+              ...state.profiles,
+              [normalizedEmail]: nextProfile,
             },
           };
         });
@@ -143,10 +201,12 @@ export const useProfileStore = create<ProfileState>()(
       setHydrated: (value) => set({ hydrated: value }),
     }),
     {
-      name: 'sipup-user-database-email',
+      name: 'sipup-neon-auth-cache',
       storage: createJSONStorage(createAppStorage),
       partialize: (state) => ({
+        currentSessionToken: state.currentSessionToken,
         currentUserEmail: state.currentUserEmail,
+        currentUserId: state.currentUserId,
         profiles: state.profiles,
       }),
       onRehydrateStorage: () => (state) => {

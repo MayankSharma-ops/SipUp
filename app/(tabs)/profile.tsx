@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,11 +9,14 @@ import { useHistoryStore } from '@/store/useHistoryStore';
 import { useProfileStore } from '@/store/useProfileStore';
 import { useWaterStore } from '@/store/useWaterStore';
 import { useWorkoutStore } from '@/store/useWorkoutStore';
+import { logoutRemoteSession } from '@/utils/api';
 import { maskEmail } from '@/utils/email';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const currentUserEmail = useProfileStore((state) => state.currentUserEmail);
+  const currentUserId = useProfileStore((state) => state.currentUserId);
+  const currentSessionToken = useProfileStore((state) => state.currentSessionToken);
   const profiles = useProfileStore((state) => state.profiles);
   const logout = useProfileStore((state) => state.logout);
   const history = useHistoryStore((state) => state.history);
@@ -23,6 +26,8 @@ export default function ProfileScreen() {
   const goal = useWaterStore((state) => state.goal);
   const lifetimeXp = useWaterStore((state) => state.lifetimeXp);
   const schedule = useWorkoutStore((state) => state.schedule);
+
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const profile = currentUserEmail ? profiles[currentUserEmail] : null;
 
@@ -60,15 +65,15 @@ export default function ProfileScreen() {
         ]}
         showsVerticalScrollIndicator={false}>
         <Text style={styles.eyebrow}>Profile</Text>
-        <Text style={styles.title}>Your email login now owns this tracking data.</Text>
+        <Text style={styles.title}>Your Neon-backed account owns this tracking data.</Text>
         <Text style={styles.subtitle}>
-          Hydration logs, streaks, and reminders are saved inside the local SipUp profile database.
+          OTP emails are sent through Nodemailer and your hydration profile syncs to PostgreSQL.
         </Text>
 
         <View style={styles.heroCard}>
           <View style={styles.identityBadge}>
             <MaterialIcons color={sipupColors.primary} name="verified-user" size={22} />
-            <Text style={styles.identityBadgeText}>Active profile</Text>
+            <Text style={styles.identityBadgeText}>Authenticated session</Text>
           </View>
 
           <Text style={styles.profileEmail}>{profile.email}</Text>
@@ -83,6 +88,24 @@ export default function ProfileScreen() {
               <Text style={styles.metaLabel}>Last sync</Text>
               <Text style={styles.metaValue}>{format(profile.updatedAt, 'MMM d, h:mm a')}</Text>
             </View>
+          </View>
+        </View>
+
+        <View style={styles.detailPanel}>
+          <Text style={styles.panelTitle}>Backend identity</Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>User ID</Text>
+            <Text numberOfLines={1} style={styles.detailValue}>
+              {currentUserId ?? profile.id ?? 'Pending'}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Login method</Text>
+            <Text style={styles.detailValue}>Email OTP</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Database</Text>
+            <Text style={styles.detailValue}>Neon PostgreSQL</Text>
           </View>
         </View>
 
@@ -130,9 +153,26 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <Pressable onPress={logout} style={styles.logoutButton}>
+        <Pressable
+          onPress={async () => {
+            setIsLoggingOut(true);
+
+            try {
+              if (currentSessionToken) {
+                await logoutRemoteSession(currentSessionToken);
+              }
+            } catch (error) {
+              console.warn('[profile] Remote logout failed. Clearing local session anyway.', error);
+            } finally {
+              logout();
+              setIsLoggingOut(false);
+            }
+          }}
+          style={styles.logoutButton}>
           <MaterialIcons color="#ffffff" name="logout" size={18} />
-          <Text style={styles.logoutText}>Log out and switch email</Text>
+          <Text style={styles.logoutText}>
+            {isLoggingOut ? 'Logging out...' : 'Log out and request a new OTP'}
+          </Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -293,10 +333,12 @@ const styles = StyleSheet.create({
     color: sipupColors.textSoft,
   },
   detailValue: {
+    flex: 1,
     fontSize: 15,
     lineHeight: 22,
     fontWeight: '800',
     color: sipupColors.text,
+    textAlign: 'right',
   },
   logoutButton: {
     marginTop: 22,

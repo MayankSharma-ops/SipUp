@@ -12,6 +12,11 @@ import { useProfileStore } from '@/store/useProfileStore';
 import { useWaterStore } from '@/store/useWaterStore';
 import { useWorkoutStore } from '@/store/useWorkoutStore';
 import {
+  ApiError,
+  fetchCurrentUser,
+  saveRemoteProfile,
+} from '@/utils/api';
+import {
   cancelUserNotifications,
   scheduleOneOffReminder,
   scheduleSmartNotifications,
@@ -45,6 +50,10 @@ export default function RootLayout() {
   const resetWorkout = useWorkoutStore((state) => state.resetWorkout);
   const hydrated = useProfileStore((state) => state.hydrated);
   const currentUserEmail = useProfileStore((state) => state.currentUserEmail);
+  const currentSessionToken = useProfileStore((state) => state.currentSessionToken);
+  const profiles = useProfileStore((state) => state.profiles);
+  const logout = useProfileStore((state) => state.logout);
+  const mergeRemoteProfile = useProfileStore((state) => state.mergeRemoteProfile);
   const saveCurrentUserData = useProfileStore((state) => state.saveCurrentUserData);
 
   const waterSnapshot = useWaterStore((state) => ({
@@ -66,8 +75,15 @@ export default function RootLayout() {
     schedule: state.schedule,
   }));
 
-  const loadedUserRef = useRef<string | null | undefined>(undefined);
-  const awaitingHydrationRef = useRef<{ email: string; signature: string } | null>(null);
+  const currentProfile = currentUserEmail ? profiles[currentUserEmail] : null;
+  const sessionKey = currentUserEmail && currentSessionToken
+    ? `${currentUserEmail}:${currentSessionToken}`
+    : null;
+
+  const appliedSessionRef = useRef<string | null>(null);
+  const remoteFetchInFlightRef = useRef<string | null>(null);
+  const remoteFetchedSessionRef = useRef<string | null>(null);
+  const awaitingHydrationRef = useRef<{ sessionKey: string; signature: string } | null>(null);
   const lastSyncedRef = useRef<string | null>(null);
 
   const syncPayload = useMemo(
@@ -81,7 +97,7 @@ export default function RootLayout() {
   const syncSignature = useMemo(() => JSON.stringify(syncPayload), [syncPayload]);
 
   useEffect(() => {
-    if (!hydrated || !currentUserEmail) {
+    if (!hydrated || !sessionKey) {
       return;
     }
 
@@ -122,79 +138,135 @@ export default function RootLayout() {
     return () => {
       responseListener.remove();
     };
-  }, [currentUserEmail, hydrated]);
+  }, [hydrated, sessionKey]);
 
   useEffect(() => {
-    if (!hydrated || !currentUserEmail) {
+    if (!hydrated || !sessionKey) {
       return;
     }
 
     void scheduleSmartNotifications(intake, goal, lastDrinkTimestamp);
-  }, [currentUserEmail, goal, hydrated, intake, lastDrinkTimestamp]);
+  }, [goal, hydrated, intake, lastDrinkTimestamp, sessionKey]);
 
   useEffect(() => {
     if (!hydrated) {
       return;
     }
 
-    if (!currentUserEmail) {
-      if (loadedUserRef.current) {
-        resetHistory();
-        resetWaterProfile();
-        resetWorkout();
-        void cancelUserNotifications();
+    if (sessionKey) {
+      return;
+    }
+
+    if (appliedSessionRef.current) {
+      resetHistory();
+      resetWaterProfile();
+      resetWorkout();
+      void cancelUserNotifications();
+    }
+
+    appliedSessionRef.current = null;
+    remoteFetchInFlightRef.current = null;
+    remoteFetchedSessionRef.current = null;
+    awaitingHydrationRef.current = null;
+    lastSyncedRef.current = null;
+  }, [hydrated, resetHistory, resetWaterProfile, resetWorkout, sessionKey]);
+
+  useEffect(() => {
+    if (!hydrated || !sessionKey || !currentProfile) {
+      return;
+    }
+
+    if (appliedSessionRef.current === sessionKey) {
+      return;
+    }
+
+    hydrateHistory(currentProfile.history);
+    hydrateWater(currentProfile.water);
+    hydrateWorkout(currentProfile.workout);
+
+    const cachedPayload = {
+      history: currentProfile.history,
+      water: currentProfile.water,
+      workout: currentProfile.workout,
+    };
+    const cachedSignature = JSON.stringify(cachedPayload);
+
+    awaitingHydrationRef.current = { sessionKey, signature: cachedSignature };
+    lastSyncedRef.current = `${sessionKey}:${cachedSignature}`;
+    appliedSessionRef.current = sessionKey;
+  }, [currentProfile, hydrateHistory, hydrateWater, hydrateWorkout, hydrated, sessionKey]);
+
+  useEffect(() => {
+    if (!hydrated || !sessionKey || !currentSessionToken) {
+      return;
+    }
+
+    if (
+      remoteFetchedSessionRef.current === sessionKey ||
+      remoteFetchInFlightRef.current === sessionKey
+    ) {
+      return;
+    }
+
+    remoteFetchInFlightRef.current = sessionKey;
+
+    void (async () => {
+      try {
+        const response = await fetchCurrentUser(currentSessionToken);
+        mergeRemoteProfile(response);
+
+        hydrateHistory(response.profile.history);
+        hydrateWater(response.profile.water);
+        hydrateWorkout(response.profile.workout);
+
+        const remotePayload = {
+          history: response.profile.history,
+          water: response.profile.water,
+          workout: response.profile.workout,
+        };
+        const remoteSignature = JSON.stringify(remotePayload);
+
+        awaitingHydrationRef.current = { sessionKey, signature: remoteSignature };
+        lastSyncedRef.current = `${sessionKey}:${remoteSignature}`;
+        appliedSessionRef.current = sessionKey;
+        remoteFetchedSessionRef.current = sessionKey;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          logout();
+          return;
+        }
+
+        console.warn('[profile] Unable to fetch remote profile. Using cached/local data.', error);
+        appliedSessionRef.current = sessionKey;
+        remoteFetchedSessionRef.current = sessionKey;
+      } finally {
+        if (remoteFetchInFlightRef.current === sessionKey) {
+          remoteFetchInFlightRef.current = null;
+        }
       }
-
-      loadedUserRef.current = null;
-      awaitingHydrationRef.current = null;
-      lastSyncedRef.current = null;
-      return;
-    }
-
-    if (loadedUserRef.current === currentUserEmail) {
-      return;
-    }
-
-    const profile = useProfileStore.getState().profiles[currentUserEmail];
-    if (!profile) {
-      return;
-    }
-
-    hydrateHistory(profile.history);
-    hydrateWater(profile.water);
-    hydrateWorkout(profile.workout);
-
-    const profilePayload = {
-      history: profile.history,
-      water: profile.water,
-      workout: profile.workout,
-    };
-    const profileSignature = JSON.stringify(profilePayload);
-
-    loadedUserRef.current = currentUserEmail;
-    awaitingHydrationRef.current = {
-      email: currentUserEmail,
-      signature: profileSignature,
-    };
-    lastSyncedRef.current = `${currentUserEmail}:${profileSignature}`;
+    })();
   }, [
-    currentUserEmail,
+    currentSessionToken,
     hydrateHistory,
     hydrateWater,
     hydrateWorkout,
     hydrated,
-    resetHistory,
-    resetWaterProfile,
-    resetWorkout,
+    logout,
+    mergeRemoteProfile,
+    sessionKey,
   ]);
 
   useEffect(() => {
-    if (!hydrated || !currentUserEmail || loadedUserRef.current !== currentUserEmail) {
+    if (!hydrated || !sessionKey || !currentSessionToken) {
+      return;
+    }
+
+    if (appliedSessionRef.current !== sessionKey || remoteFetchedSessionRef.current !== sessionKey) {
       return;
     }
 
     const awaitingHydration = awaitingHydrationRef.current;
-    if (awaitingHydration?.email === currentUserEmail) {
+    if (awaitingHydration?.sessionKey === sessionKey) {
       if (syncSignature !== awaitingHydration.signature) {
         return;
       }
@@ -202,14 +274,36 @@ export default function RootLayout() {
       awaitingHydrationRef.current = null;
     }
 
-    const nextSyncKey = `${currentUserEmail}:${syncSignature}`;
+    const nextSyncKey = `${sessionKey}:${syncSignature}`;
     if (lastSyncedRef.current === nextSyncKey) {
       return;
     }
 
-    saveCurrentUserData(syncPayload);
-    lastSyncedRef.current = nextSyncKey;
-  }, [currentUserEmail, hydrated, saveCurrentUserData, syncPayload, syncSignature]);
+    void (async () => {
+      try {
+        const response = await saveRemoteProfile(currentSessionToken, syncPayload);
+        mergeRemoteProfile(response);
+        saveCurrentUserData(syncPayload);
+        lastSyncedRef.current = nextSyncKey;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          logout();
+          return;
+        }
+
+        console.warn('[profile] Unable to sync local profile to Neon.', error);
+      }
+    })();
+  }, [
+    currentSessionToken,
+    hydrated,
+    logout,
+    mergeRemoteProfile,
+    saveCurrentUserData,
+    sessionKey,
+    syncPayload,
+    syncSignature,
+  ]);
 
   return (
     <ThemeProvider value={DefaultTheme}>
