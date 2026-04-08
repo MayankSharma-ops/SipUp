@@ -13,9 +13,15 @@ This backend exposes a small auth and profile API for the Expo app.
 - `GET /api/health`
 - `POST /api/auth/request-otp`
 - `POST /api/auth/verify-otp`
+- `POST /api/auth/login`
 - `POST /api/auth/logout`
 - `GET /api/me`
 - `PUT /api/me/profile`
+
+## Auth flow
+
+- Sign up: request OTP, verify the OTP, and set a password.
+- Log in: submit email and password directly. OTP is not used for login.
 
 ## Environment
 

@@ -30,6 +30,10 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function isValidPassword(value) {
+  return typeof value === 'string' && value.length >= 8;
+}
+
 function hashOtp(email, otp) {
   return crypto.createHash('sha256').update(`${email}:${otp}:${otpSecret}`).digest('hex');
 }
@@ -46,6 +50,33 @@ function createSessionToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+function createPasswordHash(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
+
+  return `${salt}:${derivedKey}`;
+}
+
+function verifyPasswordHash(password, storedHash) {
+  if (!storedHash || typeof storedHash !== 'string') {
+    return false;
+  }
+
+  const [salt, expectedHash] = storedHash.split(':');
+  if (!salt || !expectedHash) {
+    return false;
+  }
+
+  const derivedKey = crypto.scryptSync(password, salt, 64);
+  const expectedBuffer = Buffer.from(expectedHash, 'hex');
+
+  if (derivedKey.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(derivedKey, expectedBuffer);
+}
+
 function buildUserResponse(row) {
   return {
     id: row.id,
@@ -55,15 +86,28 @@ function buildUserResponse(row) {
   };
 }
 
-async function cleanupAuthArtifacts(client, email) {
+async function createAuthenticatedSession(client, userId) {
+  const sessionToken = createSessionToken();
+  const sessionExpiresAt = new Date(Date.now() + sessionTtlDays * 24 * 60 * 60 * 1000);
+
+  await client.query(
+    `
+      insert into user_sessions (user_id, session_hash, expires_at)
+      values ($1, $2, $3)
+    `,
+    [userId, hashSessionToken(sessionToken), sessionExpiresAt]
+  );
+
+  return sessionToken;
+}
+
+async function cleanupExpiredAuthArtifacts(client) {
   await client.query(
     `
       delete from email_otps
-      where email = $1
-         or expires_at < now()
+      where expires_at < now()
          or consumed_at is not null
-    `,
-    [email]
+    `
   );
 
   await client.query('delete from user_sessions where expires_at < now()');
@@ -151,6 +195,23 @@ app.post('/api/auth/request-otp', async (req, res, next) => {
       return res.status(400).json({ message: 'Enter a valid email address.' });
     }
 
+    const existingUser = await pool.query(
+      `
+        select id
+        from app_users
+        where email = $1
+          and password_hash is not null
+        limit 1
+      `,
+      [email]
+    );
+
+    if (existingUser.rowCount) {
+      return res.status(409).json({
+        message: 'Account already exists. Log in with your password.',
+      });
+    }
+
     const recentOtp = await pool.query(
       `
         select created_at
@@ -177,7 +238,8 @@ app.post('/api/auth/request-otp', async (req, res, next) => {
     const expiresAt = new Date(Date.now() + otpExpiryMinutes * 60 * 1000);
 
     await withTransaction(async (client) => {
-      await cleanupAuthArtifacts(client, email);
+      await cleanupExpiredAuthArtifacts(client);
+      await client.query('delete from email_otps where email = $1', [email]);
       await client.query(
         `
           insert into email_otps (email, otp_hash, expires_at)
@@ -201,6 +263,7 @@ app.post('/api/auth/verify-otp', async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const otp = String(req.body?.otp ?? '').replace(/\D/g, '').slice(0, 6);
+    const password = String(req.body?.password ?? '');
 
     if (!isValidEmail(email)) {
       return res.status(400).json({ message: 'Enter a valid email address.' });
@@ -210,8 +273,12 @@ app.post('/api/auth/verify-otp', async (req, res, next) => {
       return res.status(400).json({ message: 'Enter the 6-digit OTP from your email.' });
     }
 
+    if (!isValidPassword(password)) {
+      return res.status(400).json({ message: 'Create a password with at least 8 characters.' });
+    }
+
     const response = await withTransaction(async (client) => {
-      await cleanupAuthArtifacts(client, email);
+      await cleanupExpiredAuthArtifacts(client);
 
       const otpResult = await client.query(
         `
@@ -246,7 +313,7 @@ app.post('/api/auth/verify-otp', async (req, res, next) => {
 
       const existingUser = await client.query(
         `
-          select id
+          select id, password_hash, created_at, last_login_at
           from app_users
           where email = $1
           limit 1
@@ -255,29 +322,25 @@ app.post('/api/auth/verify-otp', async (req, res, next) => {
       );
 
       const isNewUser = existingUser.rowCount === 0;
+      const existingRow = existingUser.rows[0];
+
+      if (existingRow?.password_hash) {
+        return { conflict: 'Account already exists. Log in with your password.' };
+      }
 
       const userResult = await client.query(
         `
-          insert into app_users (email, last_login_at)
-          values ($1, now())
+          insert into app_users (email, password_hash, last_login_at)
+          values ($1, $2, now())
           on conflict (email)
-          do update set last_login_at = now()
+          do update set password_hash = excluded.password_hash, last_login_at = now()
           returning id, email, created_at, last_login_at
         `,
-        [email]
+        [email, createPasswordHash(password)]
       );
 
       const user = userResult.rows[0];
-      const sessionToken = createSessionToken();
-      const sessionExpiresAt = new Date(Date.now() + sessionTtlDays * 24 * 60 * 60 * 1000);
-
-      await client.query(
-        `
-          insert into user_sessions (user_id, session_hash, expires_at)
-          values ($1, $2, $3)
-        `,
-        [user.id, hashSessionToken(sessionToken), sessionExpiresAt]
-      );
+      const sessionToken = await createAuthenticatedSession(client, user.id);
 
       await client.query(
         `
@@ -299,6 +362,10 @@ app.post('/api/auth/verify-otp', async (req, res, next) => {
       };
     });
 
+    if (response.conflict) {
+      return res.status(409).json({ message: response.conflict });
+    }
+
     if (response.error) {
       return res.status(401).json({ message: response.error });
     }
@@ -306,6 +373,100 @@ app.post('/api/auth/verify-otp', async (req, res, next) => {
     res.json({
       isNewUser: response.isNewUser,
       message: 'Email verified successfully.',
+      profile: response.profile,
+      profileUpdatedAt: response.profileUpdatedAt,
+      sessionToken: response.sessionToken,
+      user: response.user,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/login', async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password ?? '');
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: 'Enter a valid email address.' });
+    }
+
+    if (!password) {
+      return res.status(400).json({ message: 'Enter your password.' });
+    }
+
+    const response = await withTransaction(async (client) => {
+      await cleanupExpiredAuthArtifacts(client);
+
+      const userResult = await client.query(
+        `
+          select id, email, password_hash, created_at, last_login_at
+          from app_users
+          where email = $1
+          limit 1
+          for update
+        `,
+        [email]
+      );
+
+      if (!userResult.rowCount) {
+        return { error: 'Incorrect email or password.' };
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.password_hash) {
+        return {
+          conflict:
+            'This account does not have a password yet. Open Sign Up, request an OTP for the same email, and create one.',
+        };
+      }
+
+      if (!verifyPasswordHash(password, user.password_hash)) {
+        return { error: 'Incorrect email or password.' };
+      }
+
+      const updatedUserResult = await client.query(
+        `
+          update app_users
+          set last_login_at = now()
+          where id = $1
+          returning id, email, created_at, last_login_at
+        `,
+        [user.id]
+      );
+
+      await client.query(
+        `
+          insert into user_profiles (user_id, profile_data)
+          values ($1, $2::jsonb)
+          on conflict (user_id) do nothing
+        `,
+        [user.id, JSON.stringify(createDefaultProfileData())]
+      );
+
+      const sessionToken = await createAuthenticatedSession(client, user.id);
+      const profileState = await loadUserProfile(client, user.id);
+
+      return {
+        profile: profileState.profile,
+        profileUpdatedAt: profileState.profileUpdatedAt,
+        sessionToken,
+        user: buildUserResponse(updatedUserResult.rows[0]),
+      };
+    });
+
+    if (response.conflict) {
+      return res.status(409).json({ message: response.conflict });
+    }
+
+    if (response.error) {
+      return res.status(401).json({ message: response.error });
+    }
+
+    res.json({
+      message: 'Logged in successfully.',
       profile: response.profile,
       profileUpdatedAt: response.profileUpdatedAt,
       sessionToken: response.sessionToken,
@@ -370,6 +531,12 @@ app.put('/api/me/profile', requireSession, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.use('/api', (_req, res) => {
+  res.status(404).json({
+    message: 'API route not found.',
+  });
 });
 
 app.use((error, _req, res, _next) => {
