@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+
+import { createAppStorage } from './storage';
 
 export interface DaySchedule {
   hour: number;
@@ -13,12 +13,18 @@ export type WorkoutSchedule = {
   [day in 1 | 2 | 3 | 4 | 5 | 6 | 7]: DaySchedule; // 1 = Sunday, 2 = Monday
 };
 
-interface WorkoutState {
+export interface WorkoutSnapshot {
   schedule: WorkoutSchedule;
-  updateSchedule: (newSchedule: WorkoutSchedule) => void;
 }
 
-const defaultSchedule: WorkoutSchedule = {
+interface WorkoutState extends WorkoutSnapshot {
+  schedule: WorkoutSchedule;
+  updateSchedule: (newSchedule: WorkoutSchedule) => void;
+  hydrateWorkout: (snapshot: WorkoutSnapshot) => void;
+  resetWorkout: () => void;
+}
+
+export const defaultSchedule: WorkoutSchedule = {
   2: { hour: 17, minute: 0, isRest: false }, // Mon
   3: { hour: 17, minute: 0, isRest: false }, // Tue
   4: { hour: 17, minute: 0, isRest: false }, // Wed
@@ -28,18 +34,33 @@ const defaultSchedule: WorkoutSchedule = {
   1: { hour: 17, minute: 0, isRest: true },  // Sun
 };
 
+function cloneSchedule(schedule: WorkoutSchedule): WorkoutSchedule {
+  return {
+    1: { ...schedule[1] },
+    2: { ...schedule[2] },
+    3: { ...schedule[3] },
+    4: { ...schedule[4] },
+    5: { ...schedule[5] },
+    6: { ...schedule[6] },
+    7: { ...schedule[7] },
+  };
+}
+
+export const defaultWorkoutSnapshot: WorkoutSnapshot = {
+  schedule: cloneSchedule(defaultSchedule),
+};
+
 export const useWorkoutStore = create<WorkoutState>()(
   persist(
     (set) => ({
-      schedule: defaultSchedule,
+      schedule: cloneSchedule(defaultSchedule),
       updateSchedule: (newSchedule) => set({ schedule: newSchedule }),
+      hydrateWorkout: (snapshot) => set({ schedule: cloneSchedule(snapshot.schedule) }),
+      resetWorkout: () => set({ schedule: cloneSchedule(defaultSchedule) }),
     }),
     {
       name: 'workout-storage',
-      storage: createJSONStorage(() => {
-        if (Platform.OS === 'web') return typeof window !== 'undefined' ? window.localStorage : { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} };
-        return AsyncStorage;
-      }),
+      storage: createJSONStorage(createAppStorage),
     }
   )
 );

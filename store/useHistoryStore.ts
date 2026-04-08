@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+
+import { createAppStorage } from './storage';
 
 export interface DrinkLog {
   timestamp: number;
@@ -15,17 +15,28 @@ export interface DailyRecord {
   drinkLogs?: DrinkLog[];
 }
 
-interface HistoryState {
+export interface HistorySnapshot {
+  history: DailyRecord[];
+  streak: number;
+}
+
+export const defaultHistorySnapshot: HistorySnapshot = {
+  history: [],
+  streak: 0,
+};
+
+interface HistoryState extends HistorySnapshot {
   history: DailyRecord[];
   streak: number;
   saveDailyRecord: (record: DailyRecord, missedDays: number) => void;
+  hydrateHistory: (snapshot: HistorySnapshot) => void;
+  resetHistory: () => void;
 }
 
 export const useHistoryStore = create<HistoryState>()(
   persist(
     (set) => ({
-      history: [],
-      streak: 0,
+      ...defaultHistorySnapshot,
       saveDailyRecord: (record, missedDays) => {
         set((state) => {
           let newStreak = state.streak;
@@ -48,19 +59,16 @@ export const useHistoryStore = create<HistoryState>()(
           };
         });
       },
+      hydrateHistory: (snapshot) =>
+        set({
+          history: snapshot.history,
+          streak: snapshot.streak,
+        }),
+      resetHistory: () => set({ ...defaultHistorySnapshot }),
     }),
     {
       name: 'history-storage',
-      storage: createJSONStorage(() => {
-        if (Platform.OS === 'web') {
-          return typeof window !== 'undefined' ? window.localStorage : {
-            getItem: () => Promise.resolve(null),
-            setItem: () => Promise.resolve(),
-            removeItem: () => Promise.resolve(),
-          };
-        }
-        return AsyncStorage;
-      }),
+      storage: createJSONStorage(createAppStorage),
     }
   )
 );
