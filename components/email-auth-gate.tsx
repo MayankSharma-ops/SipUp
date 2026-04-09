@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InitialAccessScreen } from '@/components/initial-access-screen';
 import { sipupColors, sipupShadow } from '@/constants/sipup-ui';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { useProfileStore } from '@/store/useProfileStore';
@@ -28,6 +29,7 @@ import {
 import { isValidEmail, normalizeEmail } from '@/utils/email';
 
 type AuthMode = 'signup' | 'login';
+type EntryStage = 'initial-access' | 'auth';
 
 const AUTH_ARTWORK =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBm3VDp3oIT0KJB3EnXz38VhijOsBIhv5ab11vxIgz6xMcDPhO9ha6mPDHexz_mVys5bfrklYUv6ofgLipqcJFFZL42i1iVR3ZEh5XXnff8exrvAbPhzBQtSXGcuvPVRthnRRTXzCwEG1RiDvpEeIiudZctJ0xY6E3yDY3DPf9jftwynYpEDhMLbn48Aca1oS1RlwlEz4QMQepsWmOXZuPjYttd9xYgy70181oYEP-qliLInun3DTMPc1YGrQMo1ZqS9PJHwRz3cve7';
@@ -101,7 +103,8 @@ export function EmailAuthGate() {
   const currentUserEmail = useProfileStore((state) => state.currentUserEmail);
   const setAuthenticatedSession = useProfileStore((state) => state.setAuthenticatedSession);
 
-  const [authMode, setAuthMode] = useState<AuthMode>('signup');
+  const [entryStage, setEntryStage] = useState<EntryStage>('initial-access');
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -166,6 +169,13 @@ export function EmailAuthGate() {
     setConfirmPassword('');
   }, [authMode]);
 
+  useEffect(() => {
+    if (!currentUserEmail) {
+      setEntryStage('initial-access');
+      setAuthMode('login');
+    }
+  }, [currentUserEmail]);
+
   if (!hydrated) {
     return (
       <View
@@ -184,6 +194,16 @@ export function EmailAuthGate() {
 
   if (currentUserEmail) {
     return null;
+  }
+
+  const handleContinueToAuth = () => {
+    clearFeedback();
+    setAuthMode('login');
+    setEntryStage('auth');
+  };
+
+  if (entryStage === 'initial-access') {
+    return <InitialAccessScreen onContinue={handleContinueToAuth} />;
   }
 
   const validateSignupFields = () => {
