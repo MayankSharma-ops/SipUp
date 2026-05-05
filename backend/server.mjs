@@ -551,7 +551,8 @@ async function startServer() {
   await ensureDatabaseSchema();
 
   app.listen(port, () => {
-    console.log(`[server] SipUp auth API running on http://localhost:${port}`);
+    const publicUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
+    console.log(`[server] SipUp auth API running on ${publicUrl}`);
   });
 }
 
