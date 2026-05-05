@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { format, subDays } from 'date-fns';
 
 import { useHistoryStore } from '@/store/useHistoryStore';
+import { useReminderStore } from '@/store/useReminderStore';
 import { useWaterStore } from '@/store/useWaterStore';
 import { sipupColors, sipupImages, sipupShadow } from '@/constants/sipup-ui';
 
@@ -110,14 +111,39 @@ export default function DashboardScreen() {
   const checkNewDay = useWaterStore((state) => state.checkNewDay);
   const history = useHistoryStore((state) => state.history);
   const streak = useHistoryStore((state) => state.streak);
+  const nextReminderTime = useReminderStore((state) => state.nextReminderTime);
+  const remindersEnabled = useReminderStore((state) => state.remindersEnabled);
 
   const [goalEditorVisible, setGoalEditorVisible] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarText, setSnackbarText] = useState('');
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     checkNewDay();
   }, [checkNewDay]);
+
+  // Live countdown timer — refreshes every 15 seconds
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const nextReminderLabel = useMemo(() => {
+    if (!remindersEnabled) return 'Paused';
+    if (nextReminderTime === null) return 'Setting up...';
+
+    const diffMs = nextReminderTime - now;
+    if (diffMs <= 0) return 'Any moment now';
+
+    const diffMin = Math.ceil(diffMs / 60_000);
+    if (diffMin >= 60) {
+      const hours = Math.floor(diffMin / 60);
+      const mins = diffMin % 60;
+      return mins > 0 ? `in ${hours}h ${mins}m` : `in ${hours}h`;
+    }
+    return `in ${diffMin} min`;
+  }, [nextReminderTime, now, remindersEnabled]);
 
   const progress = Math.min(goal > 0 ? intake / goal : 0, 1);
   const dashOffset = CIRCUMFERENCE * (1 - progress);
@@ -263,6 +289,11 @@ export default function DashboardScreen() {
             icon="bottle-tonic-plus-outline"
             onPress={() => handleQuickLog(500)}
           />
+        </View>
+
+        <View style={styles.nextReminderRow}>
+          <MaterialIcons color={sipupColors.teal} name="notifications-active" size={18} />
+          <Text style={styles.nextReminderText}>Next reminder {nextReminderLabel}</Text>
         </View>
 
         <View style={styles.insightCard}>
@@ -441,7 +472,25 @@ const styles = StyleSheet.create({
   quickLogGrid: {
     flexDirection: 'row',
     gap: 20,
+    marginBottom: 14,
+  },
+  nextReminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     marginBottom: 34,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    backgroundColor: 'rgba(10, 115, 140, 0.08)',
+    alignSelf: 'center',
+  },
+  nextReminderText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: sipupColors.teal,
+    letterSpacing: 0.3,
   },
   quickLogButton: {
     flex: 1,

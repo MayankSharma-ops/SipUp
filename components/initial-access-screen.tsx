@@ -1,7 +1,9 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
+  Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -34,6 +36,64 @@ export function InitialAccessScreen({
   const { height, width } = useWindowDimensions();
   const heroSize = Math.min(width - 28, 398, Math.max(288, height * 0.37));
   const heroHaloSize = heroSize + 27;
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const scanAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const floatingLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: 1,
+          duration: 3200,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 3200,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+      { resetBeforeIteration: true }
+    );
+
+    const scanLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanAnim, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanAnim, {
+          toValue: 0,
+          duration: 1800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+      { resetBeforeIteration: true }
+    );
+
+    floatingLoop.start();
+    scanLoop.start();
+
+    return () => {
+      floatingLoop.stop();
+      scanLoop.stop();
+    };
+  }, [floatAnim, scanAnim]);
+
+  const heroTranslateY = floatAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-6, 6],
+  });
+
+  const scanOpacity = scanAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.58, 1],
+  });
 
   return (
     <View style={styles.overlay}>
@@ -61,7 +121,9 @@ export function InitialAccessScreen({
         <Text style={styles.eyebrow}>WELCOME TO SIPUP | INITIAL ACCESS</Text>
 
         <View style={styles.mainSection}>
-          <View style={styles.heroWrap}>
+          <Animated.View
+            style={[styles.heroWrap, { transform: [{ translateY: heroTranslateY }] }]}
+          >
             <View
               style={[
                 styles.heroHalo,
@@ -102,14 +164,14 @@ export function InitialAccessScreen({
               </Svg>
 
               <View style={styles.heroContent}>
-                <View style={styles.scanRow}>
+                <Animated.View style={[styles.scanRow, { opacity: scanOpacity }]}>
                   <View style={styles.scanDot} />
                   <Text style={styles.scanLabel}>ACTIVE SCAN</Text>
-                </View>
-                <Text style={styles.heroTitle}>-- PENDING INITIAL SETUP</Text>
+                </Animated.View>
+                <Text style={styles.heroTitle}>   PENDING INITIAL SETUP</Text>
               </View>
             </View>
-          </View>
+          </Animated.View>
 
           <View style={styles.featureSection}>
             <Text style={styles.featureBackdropText}>FLUID</Text>
@@ -153,7 +215,7 @@ export function InitialAccessScreen({
             <Rect
               fill="url(#ctaGradient)"
               height="100"
-              rx="50"
+              rx="8"
               width="100"
               x="0"
               y="0"
@@ -314,13 +376,13 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   ctaButton: {
-    height: 62,
-    borderRadius: 999,
+    height: 76,
+    borderRadius: 16,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
-    maxWidth: 336,
+    maxWidth: 348,
     alignSelf: "center",
     marginTop: 6,
     marginBottom: 2,
@@ -333,8 +395,8 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: "#ffffff",
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 18,
+    lineHeight: 24,
     fontWeight: "900",
     letterSpacing: -0.2,
   },

@@ -47,3 +47,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Android Studio
+.idea/
+*.iml

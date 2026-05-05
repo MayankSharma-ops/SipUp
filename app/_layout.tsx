@@ -18,11 +18,16 @@ import {
 } from '@/utils/api';
 import {
   cancelUserNotifications,
-  scheduleOneOffReminder,
-  scheduleSmartNotifications,
+  scheduleMorningNotifications,
   scheduleWorkoutReminders,
   setupNotificationChannel,
 } from '@/utils/notifications';
+import {
+  onAppStart,
+  onDrink,
+  onReject,
+  onSnooze,
+} from '@/utils/reminderEngine';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -96,6 +101,10 @@ export default function RootLayout() {
   );
   const syncSignature = useMemo(() => JSON.stringify(syncPayload), [syncPayload]);
 
+  // -----------------------------------------------------------------------
+  // App start: setup channels, workout reminders, morning greeting, and
+  // reconcile the dynamic reminder engine.
+  // -----------------------------------------------------------------------
   useEffect(() => {
     if (!hydrated || !sessionKey) {
       return;
@@ -105,6 +114,10 @@ export default function RootLayout() {
       useWaterStore.getState().checkNewDay();
       await setupNotificationChannel();
       await scheduleWorkoutReminders();
+      await scheduleMorningNotifications();
+
+      // Reconcile the smart reminder engine on app start
+      await onAppStart();
 
       const todayString = format(new Date(), 'yyyy-MM-dd');
       const waterState = useWaterStore.getState();
@@ -123,15 +136,30 @@ export default function RootLayout() {
       }
     })();
 
+    // -----------------------------------------------------------------------
+    // Notification response listener — handle all action buttons
+    // -----------------------------------------------------------------------
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
       const action = response.actionIdentifier;
 
       if (action === 'ACCEPT') {
         useWaterStore.getState().addWater(250);
+        // addWater sets lastDrinkTimestamp, the effect below handles onDrink()
       } else if (action === 'ACCEPT_MORNING') {
         useWaterStore.getState().addWater(500);
-      } else if (action === 'REMIND') {
-        void scheduleOneOffReminder(10);
+        // Same — triggers the lastDrinkTimestamp effect
+      } else if (action === 'SNOOZE_15') {
+        void onSnooze(15);
+      } else if (action === 'SNOOZE_30') {
+        void onSnooze(30);
+      } else if (action === 'SNOOZE_60') {
+        void onSnooze(60);
+      } else if (action === 'DECLINE') {
+        void onReject();
+      } else if (action === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        // User tapped the notification body itself (opened the app)
+        // Treat as "I'm aware" — schedule default snooze so they don't miss it
+        // but don't spam. They can manually log from the app.
       }
     });
 
@@ -140,13 +168,17 @@ export default function RootLayout() {
     };
   }, [hydrated, sessionKey]);
 
+  // -----------------------------------------------------------------------
+  // Dynamic reminder: whenever the user drinks (lastDrinkTimestamp changes),
+  // reset the reminder timer via the engine.
+  // -----------------------------------------------------------------------
   useEffect(() => {
-    if (!hydrated || !sessionKey) {
+    if (!hydrated || !sessionKey || lastDrinkTimestamp === null) {
       return;
     }
 
-    void scheduleSmartNotifications(intake, goal, lastDrinkTimestamp);
-  }, [goal, hydrated, intake, lastDrinkTimestamp, sessionKey]);
+    void onDrink(lastDrinkTimestamp);
+  }, [hydrated, lastDrinkTimestamp, sessionKey]);
 
   useEffect(() => {
     if (!hydrated) {

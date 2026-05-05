@@ -31,18 +31,23 @@ export async function setupNotificationChannel() {
   await Notifications.setNotificationCategoryAsync('water', [
     {
       identifier: 'ACCEPT',
-      buttonTitle: 'Accept (250ml)',
+      buttonTitle: 'Drink 250ml',
       options: { opensAppToForeground: true },
     },
     {
-      identifier: 'REMIND',
-      buttonTitle: 'Remind me in 10m',
-      options: { opensAppToForeground: true },
+      identifier: 'SNOOZE_15',
+      buttonTitle: 'Snooze 15m',
+      options: { opensAppToForeground: false },
     },
     {
-      identifier: 'DECLINE',
-      buttonTitle: 'Decline',
-      options: { isDestructive: true, opensAppToForeground: false },
+      identifier: 'SNOOZE_30',
+      buttonTitle: 'Snooze 30m',
+      options: { opensAppToForeground: false },
+    },
+    {
+      identifier: 'SNOOZE_60',
+      buttonTitle: 'Snooze 1h',
+      options: { opensAppToForeground: false },
     },
   ]);
 
@@ -60,70 +65,16 @@ export async function setupNotificationChannel() {
   ]);
 }
 
-export async function scheduleOneOffReminder(minutes: number) {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Hydration Reminder!',
-      body: `You asked to be reminded ${minutes} minutes ago. Drink 250ml of water now!`,
-      categoryIdentifier: 'water',
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: minutes * 60,
-    },
-  });
-}
-
-export async function scheduleSmartNotifications(
-  intake: number,
-  goal: number,
-  lastDrinkTimestamp: number | null
-) {
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') {
-    return;
-  }
-
+export async function scheduleMorningNotifications() {
+  // Cancel existing morning notifications first
   const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
   for (const notification of allNotifications) {
-    if (
-      notification.content.categoryIdentifier === 'water' ||
-      notification.content.categoryIdentifier === 'morning'
-    ) {
+    if (notification.content.categoryIdentifier === 'morning') {
       await Notifications.cancelScheduledNotificationAsync(notification.identifier);
     }
   }
 
-  const remainingWater = goal - intake;
   const now = new Date();
-
-  if (remainingWater > 0) {
-    for (let index = 1; index <= 3; index += 1) {
-      const triggerTime = new Date(now.getTime() + index * 2 * 60 * 60 * 1000);
-      const hour = triggerTime.getHours();
-
-      if (triggerTime.getDate() === now.getDate() && hour >= 9 && hour < 22) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Hydration Check!',
-            body: `You still have ${remainingWater}ml to go! Time for a sip.`,
-            categoryIdentifier: 'water',
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: triggerTime,
-          },
-        });
-      }
-    }
-  }
 
   for (let dayOffset = 1; dayOffset <= 3; dayOffset += 1) {
     const targetDate = new Date(now);
@@ -139,22 +90,6 @@ export async function scheduleSmartNotifications(
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: morningTime },
     });
-
-    for (const hour of [14, 19]) {
-      const triggerTime = new Date(targetDate);
-      triggerTime.setHours(hour, 0, 0, 0);
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Keep it up!',
-          body: "Don't forget to pace your hydration today!",
-          categoryIdentifier: 'water',
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: triggerTime,
-        },
-      });
-    }
   }
 }
 
