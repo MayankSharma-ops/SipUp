@@ -102,10 +102,10 @@ export function resolveApiBaseUrl() {
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {
     const host = hostUri.split(':')[0];
-    return `http://${host}:3001`;
+    return process.env.EXPO_PUBLIC_API_BASE_URL || `http://${host}:3001`;
   }
 
-  return 'http://localhost:3001';
+  return process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3001';
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -163,10 +163,7 @@ async function apiRequest<T>(
       headers,
     });
   } catch (error) {
-    const hint =
-      Platform.OS === 'web'
-        ? 'Make sure the backend is running on localhost:3001.'
-        : 'If you are using a real phone, localhost will not work unless it is remapped to your computer IP.';
+    const hint = 'Please check your network connection and try again.';
 
     throw new ApiError(
       `Network request failed while calling ${baseUrl}${path}. ${hint}`,

@@ -39,7 +39,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -48,8 +49,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "12dbb17a-205d-4056-af19-d7f175014931"
+        "projectId": "e4f1f7c3-0491-4f26-928a-25a7de19d810"
       }
-    }
+    },
+    "owner": "mayank-sharma"
   }
 }
