@@ -249,7 +249,9 @@ app.post('/api/auth/request-otp', async (req, res, next) => {
       );
     });
 
-    await sendOtpEmail({ email, otp });
+    sendOtpEmail({ email, otp }).catch((emailError) => {
+      console.error('[server] Failed to send OTP email:', emailError?.message ?? emailError);
+    });
 
     res.json({
       message: `OTP sent to ${email}.`,
